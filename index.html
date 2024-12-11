@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Call Procedure API</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script> <!-- เพิ่ม Plugin -->
+</head>
+<body>
+    <div class="container">
+        <h1>Recheck Report</h1>
+        <div>
+        <form id="procedureForm">
+            <select id="iDate" name="iDate" required>
+                <option value="" disabled selected>Select a date</option>
+                <!-- JavaScript will populate this --> 
+            </select> 
+            <button type="submit">Submit</button>
+        </form>
+        </div>
+
+        <!-- Canvas for Chart.js -->
+        <div id="chartContainer">
+            <h2>ข้อมูล Recheck ขาดประจำวัน</h2>
+            <canvas id="myChart"></canvas>
+        </div>
+
+        <div id="chartContainer">
+            <h2>ข้อมูล Recheck เหลือประจำวัน</h2>
+            <canvas id="myChart2"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Populate dropdown with dates (yyyy-mm-dd format)
+        const dateDropdown = document.getElementById('iDate');
+        const today = new Date();
+
+        for (let i = 0; i < 7; i++) {
+            const date = new Date(today);
+            date.setDate(today.getDate() - i);
+            const formattedDate = date.toISOString().split('T')[0]; // yyyy-mm-dd format
+
+            const option = document.createElement('option');
+            option.value = formattedDate; // Send as nvarchar
+            option.textContent = formattedDate;
+            dateDropdown.appendChild(option);
+        }
+
+    // Global variables to store chart instances
+    let myChartInstance = null;
+    let myChart2Instance = null;
+
+    // Form submission handler
+    procedureForm.addEventListener('submit', async (e) => {
+        e.preventDefault(); // Prevent default form submission
+        const selectedDate = dateDropdown.value; // Get selected date
+
+        try {
+            // Fetch data for the first chart
+            const response = await fetch(`http://192.168.101.138:11813/api/call-procedure?iDate=${selectedDate}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                // Destroy the existing chart if it exists
+                if (myChartInstance) {
+                    myChartInstance.destroy();
+                }
+
+                // Render new chart
+                myChartInstance = renderChart(result);
+            } else {
+                console.error(`Error: ${result.message}`);
+            }
+        } catch (error) {
+            console.error(`Error: ${error.message}`);
+        }
+
+        try {
+            // Fetch data for the second chart
+            const response2 = await fetch(`http://192.168.101.138:11813/api/call-procedure?iDate=${selectedDate}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            const result2 = await response2.json();
+
+            if (response2.ok) {
+                // Destroy the existing second chart if it exists
+                if (myChart2Instance) {
+                    myChart2Instance.destroy();
+                }
+
+                // Render new second chart
+                myChart2Instance = renderChart2(result2);
+            } else {
+                console.error(`Error: ${result2.message}`);
+            }
+        } catch (error) {
+            console.error(`Error: ${error.message}`);
+        }
+    });
+
+    // Render the Line and Clustered Column Chart using Chart.js
+    function renderChart(data) {
+        const labels = data.map(item => item.PO); // X-axis labels (PO)
+        const shortData = data.map(item => item.SHORT); // Y-axis data for SHORT
+        const errorSHData = data.map(item => item.ERROR_SH); // Y-axis data for ERROR_SH
+        const totalSHData = data.map(item => item.total_SH); // Line data for total_SH
+
+        const ctx = document.getElementById('myChart').getContext('2d');
+        return new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'ขาด', // Data series for SHORT
+                        data: shortData,
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)', // Color for SHORT bars
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1,
+                        yAxisID: 'y1',
+                        type: 'bar',
+                    },
+                    {
+                        label: 'ERROR', // Data series for ERROR_SH
+                        data: errorSHData,
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)', // Color for ERROR_SH bars
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1,
+                        yAxisID: 'y1',
+                        type: 'bar',
+                    },
+                    {
+                        label: 'Recheck ขาด ทั้งหมด', // Line chart for total_SH
+                        data: totalSHData,
+                        borderColor: 'rgba(75, 192, 192, 1)', // Color for total_SH line
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        fill: false,
+                        borderWidth: 2,
+                        yAxisID: 'y2',
+                        type: 'line',
+                    }
+                ]
+            },
+            options: {
+                plugins: {
+                    datalabels: {
+                        display: true, // Show data labels
+                        color: 'black', // Default color for data labels
+                        font: {
+                            weight: 'bold',
+                            size: 12, // Font size for data labels
+                        },
+                        anchor: 'end', // Position labels appropriately for bars
+                        align: 'start', // Alignment for bar chart labels
+                    }
+                },
+                scales: {
+                    y1: {
+                        beginAtZero: true,
+                        position: 'left',
+                    },
+                    y2: {
+                        beginAtZero: true,
+                        position: 'right',
+                        grid: {
+                            drawOnChartArea: false, // Disable grid lines for the right Y-axis
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderChart2(data) {
+        const labels = data.map(item => item.PO); // X-axis labels (PO)
+        const shortData = data.map(item => item.LEFT); // Y-axis data for SHORT
+        const errorSHData = data.map(item => item.ERROR_LE); // Y-axis data for ERROR_SH
+        const totalSHData = data.map(item => item.total_le); // Line data for total_SH
+
+        const ctx = document.getElementById('myChart2').getContext('2d');
+        return new Chart(ctx, {
+            type: 'bar', // Clustered Column and Line chart combined
+            data: {
+                labels: labels, // PO as X-axis
+                datasets: [
+                    {
+                        label: 'เหลือ', // Data series for SHORT
+                        data: shortData,
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)', // Color for SHORT bars
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1,
+                        yAxisID: 'y1', // Y-axis for SHORT
+                        type: 'bar', // Bar chart for SHORT
+                    },
+                    {
+                        label: 'ERROR', // Data series for ERROR_SH
+                        data: errorSHData,
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)', // Color for ERROR_SH bars
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1,
+                        yAxisID: 'y1', // Y-axis for ERROR_SH
+                        type: 'bar', // Bar chart for ERROR_SH
+                    },
+                    {
+                        label: 'Recheck เหลือ ทั้งหมด', // Line chart for total_SH
+                        data: totalSHData,
+                        borderColor: 'rgba(75, 192, 192, 1)', // Color for total_SH line
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        fill: false,
+                        borderWidth: 2,
+                        yAxisID: 'y2', // Y-axis for total_SH
+                        type: 'line', // Line chart for total_SH
+                    }
+                ]
+            },
+            options: {
+                plugins: {
+                    datalabels: {
+                        display: true, // Enable datalabels for all datasets
+                    }
+                },
+                scales: {
+                    y1: {
+                        beginAtZero: true,
+                        position: 'left',
+                    },
+                    y2: {
+                        beginAtZero: true,
+                        position: 'right',
+                        grid: {
+                            drawOnChartArea: false, // Disable grid lines for the right Y-axis
+                        }
+                    }
+                }
+            }
+        });
+    }
+</script>
